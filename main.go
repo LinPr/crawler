@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 func main() {
@@ -25,6 +26,12 @@ func main() {
 		fmt.Printf("err: %v\n", err)
 		return
 	}
-
 	fmt.Printf("%s\n", string(body))
+
+	count := strings.Count(string(body), "<a") // 几乎等价 bytes.Count()
+	fmt.Printf("links count: %v\n", count)
+
+	exist := strings.Contains(string(body), "中国")
+	fmt.Printf("contains exist: %v\n", exist) // 几乎等价  bytes.Contains()
+
 }
