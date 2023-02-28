@@ -1,19 +1,32 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
 	"io"
 	"net/http"
-	"strings"
 )
 
 func main() {
 	url := "https://www.jd.com"
+	body, err := Fetch(url)
+	if err != nil {
+		fmt.Printf("Fetch err: %v\n", err)
+		return
+	}
+
+	fmt.Println(string(body))
+}
+
+func Fetch(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Printf("http.Get(url) err: %v\n", err)
-		return
+		panic(err)
 	}
 	defer resp.Body.Close()
 
@@ -21,23 +34,23 @@ func main() {
 		fmt.Printf("resp.StatusCode: %v\n", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("io.ReadAll(resp.Body) err: %v\n", err)
-		return
-	}
+	bodyReader := bufio.NewReader(resp.Body)
+
+	e := DetermineEncoding(bodyReader)
+	utf8Reader := transform.NewReader(bodyReader, e.NewDecoder())
+	return io.ReadAll(utf8Reader)
+
 	// fmt.Printf("body: %v\n", string(body))
+}
 
-	numLinks := strings.Count(string(body), "<a")
-	fmt.Printf("homepage has %d sublinks!\n", numLinks)
+func DetermineEncoding(r *bufio.Reader) encoding.Encoding {
+	//检测html页面编码使用peek
+	bytes, err := r.Peek(1024)
+	if err != nil {
+		fmt.Printf("r.Peek(1024) err: %v\n", err)
+		return unicode.UTF8
+	}
 
-	numLinks = bytes.Count(body, []byte("<a"))
-	fmt.Printf("homepage has %d sublinks!\n", numLinks)
-
-	exist := strings.Contains(string(body), "<a")
-	fmt.Printf("homepage exist link? %v\n", exist)
-
-	exist = bytes.Contains(body, []byte("<a"))
-	fmt.Printf("homepage exist link? %v\n", exist)
-
+	e, _, _ := charset.DetermineEncoding(bytes, "")
+	return e
 }
