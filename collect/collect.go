@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/LinPr/crawler/proxy"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/unicode"
@@ -43,6 +44,7 @@ func (BaseFetch) Get(url string) ([]byte, error) {
 
 type BrowerFetch struct {
 	Timeout time.Duration
+	Proxy   proxy.ProxyFunc
 }
 
 func (b BrowerFetch) Get(url string) ([]byte, error) {
