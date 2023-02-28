@@ -9,17 +9,25 @@ import (
 	"golang.org/x/text/transform"
 	"io"
 	"net/http"
+	"regexp"
 )
 
 func main() {
-	url := "https://www.jd.com"
+	url := "https://www.thepaper.cn/"
 	body, err := Fetch(url)
 	if err != nil {
 		fmt.Printf("Fetch err: %v\n", err)
 		return
 	}
 
-	fmt.Println(string(body))
+	// fmt.Println(string(body))
+	rgx := regexp.MustCompile(`<div class=[\s\S]*?<h2>[\s\S]*?<a.*?target="_blank">([\s\S]*?)</a>`)
+	matches := rgx.FindAllStringSubmatch(string(body), -1)
+	for _, v := range matches {
+		fmt.Println(v)
+		fmt.Println()
+	}
+
 }
 
 func Fetch(url string) ([]byte, error) {
