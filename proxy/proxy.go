@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"net/http"
 	"net/url"
@@ -89,7 +90,10 @@ func NewConsistentHashBalancer(replicas int, proxyURLs ...string) (ProxyFunc, er
 
 // 读取哈希环上下一个可用的虚拟 proxy 节点，并通过map映射到真实的 proxy
 func (c *ConsistentHashBalancer) GetNextServer(pr *http.Request) (*url.URL, error) {
+	// 只读操作加读锁
 	c.lock.RLock()
+	defer c.lock.RUnlock()
+
 	//这里因为我只有一台机器，多代理，是一对多的无状态模型，以每次请求访问的时间作为key，访问哈希环,
 	//如果是多对多，且有状态可用机器 IP + port 作key
 	key, _ := time.Now().MarshalBinary()
@@ -108,4 +112,46 @@ func (c *ConsistentHashBalancer) GetNextServer(pr *http.Request) (*url.URL, erro
 		}
 	}
 	return c.circle[minKey], nil
+}
+
+func (c *ConsistentHashBalancer) RemoveServer(proxyURL string) error {
+	// 删除操作加写锁
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for i := 0; i < c.replicas; i++ {
+		hash := crc32.ChecksumIEEE([]byte(proxyURL + strconv.Itoa(i)))
+		delete(c.circle, hash)
+	}
+
+	parsedUrl, err := url.Parse(proxyURL)
+	if err != nil {
+		fmt.Printf("url.Parse() error: %v\n", err)
+		return err
+	}
+	for k, v := range c.proxyURLs {
+		if v == parsedUrl {
+			c.proxyURLs = append(c.proxyURLs[:k], c.proxyURLs[k+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (c *ConsistentHashBalancer) AddServer(proxyURL string) error {
+	// 增加操作加写锁
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	parsedUrl, err := url.Parse(proxyURL)
+	if err != nil {
+		fmt.Printf("url.Parse() error: %v\n", err)
+		return err
+	}
+	c.proxyURLs = append(c.proxyURLs, parsedUrl)
+	for i := 0; i < c.replicas; i++ {
+		hash := crc32.ChecksumIEEE([]byte(proxyURL + strconv.Itoa(i)))
+		c.circle[hash] = parsedUrl
+	}
+
+	return nil
 }
