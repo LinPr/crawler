@@ -51,7 +51,11 @@ func (b BrowerFetch) Get(url string) ([]byte, error) {
 	client := http.Client{
 		Timeout: b.Timeout,
 	}
-
+	if b.Proxy != nil {
+		transport, _ := http.DefaultTransport.(*http.Transport) // 类型断言，为了使用concrete type数据的成员和方法
+		transport.Proxy = b.Proxy
+		client.Transport = transport // 配置client对象的transport为自定义
+	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		// fmt.Printf("http.NewRequest() error: %v\n", err)

@@ -2,14 +2,18 @@ package proxy
 
 import (
 	"errors"
+	"hash/crc32"
 	"net/http"
 	"net/url"
-	"sync/atomic"
+	"strconv"
+	"sync"
+	"time"
 )
 
 type ProxyFunc func(*http.Request) (*url.URL, error)
 
-type roundRobinSwitcher struct {
+type RoundRobinBalancer struct {
+	lock      sync.Mutex
 	proxyURls []*url.URL
 	index     uint32
 }
@@ -17,8 +21,8 @@ type roundRobinSwitcher struct {
 // 这是一个闭包，
 // 在go语言中函数作为一等公民，函数可以当做任何参数或者返回值传来传去（类似C++中的std::function，或者仿函数对象）
 // 使用方法为，根据这个闭包生成一个对象。然后每次调用这个对象时，都会改变这个对象中数据成员的状态
-func RoundRobinProxySwitcher(proxyURLs ...string) (ProxyFunc, error) {
-	if len(proxyURLs) < 1 {
+func NewRoundRobinBalancer(proxyURLs ...string) (ProxyFunc, error) {
+	if len(proxyURLs) == 0 {
 		return nil, errors.New("proxy URL list is empty")
 	}
 	var urls []*url.URL
@@ -30,17 +34,78 @@ func RoundRobinProxySwitcher(proxyURLs ...string) (ProxyFunc, error) {
 		urls = append(urls, parsedUrl)
 	}
 
-	rrs := roundRobinSwitcher{
+	rrb := RoundRobinBalancer{
 		proxyURls: urls,
 		index:     0,
 	}
-	return (&rrs).GetProxy, nil
+	return (&rrb).GetNextServer, nil
 }
 
-// GetProxy 作用很像是迭代器
-func (r *roundRobinSwitcher) GetProxy(pr *http.Request) (*url.URL, error) {
-	// 这里类似于C语言迭代器执行后置++，返回旧值
-	index := atomic.AddUint32(&r.index, 1) - 1
-	u := r.proxyURls[index%uint32(len(r.proxyURls))]
+// GetProxy 作用很像是迭代器,类似C语言的后置++
+func (r *RoundRobinBalancer) GetNextServer(pr *http.Request) (*url.URL, error) {
+	r.lock.Lock()
+	u := r.proxyURls[r.index]
+	r.index = (r.index + 1) % uint32(len(r.proxyURls))
+	r.lock.Unlock()
 	return u, nil
+}
+
+type ConsistentHashBalancer struct {
+	lock      sync.RWMutex
+	replicas  int
+	proxyURLs []*url.URL
+	circle    map[uint32]*url.URL
+}
+
+func NewConsistentHashBalancer(replicas int, proxyURLs ...string) (ProxyFunc, error) {
+	if len(proxyURLs) == 0 {
+		return nil, errors.New("proxy URL list is empty")
+	}
+
+	var urls []*url.URL
+	for _, v := range proxyURLs {
+		parsedUrl, err := url.Parse(v)
+		if err != nil {
+			return nil, err
+		}
+		urls = append(urls, parsedUrl)
+	}
+
+	chb := ConsistentHashBalancer{
+		replicas:  replicas,
+		proxyURLs: urls,
+		circle:    make(map[uint32]*url.URL),
+	}
+	// 每个proxy都在哈希环上创建指定的副本数量
+	for _, v := range urls {
+		for i := 0; i < replicas; i++ {
+			hash := crc32.ChecksumIEEE([]byte(v.String() + strconv.Itoa(i)))
+			chb.circle[hash] = v
+		}
+	}
+	return (&chb).GetNextServer, nil
+
+}
+
+// 读取哈希环上下一个可用的虚拟 proxy 节点，并通过map映射到真实的 proxy
+func (c *ConsistentHashBalancer) GetNextServer(pr *http.Request) (*url.URL, error) {
+	c.lock.RLock()
+	//这里因为我只有一台机器，多代理，是一对多的无状态模型，以每次请求访问的时间作为key，访问哈希环,
+	//如果是多对多，且有状态可用机器 IP + port 作key
+	key, _ := time.Now().MarshalBinary()
+	hash := crc32.ChecksumIEEE(key)
+	for k := range c.circle {
+		if k >= hash {
+			return c.circle[k], nil
+		}
+	}
+
+	// 若这个哈希值比所有的虚拟节点都大, 则找到key值最小的节点
+	var minKey uint32 = ^uint32(0)
+	for k, _ := range c.circle {
+		if k < minKey {
+			minKey = k
+		}
+	}
+	return c.circle[minKey], nil
 }

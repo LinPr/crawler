@@ -17,9 +17,10 @@ var proxyUrls = []string{"http://192.168.31.67:1080"}
 
 func main() {
 
-	p, err := proxy.RoundRobinProxySwitcher(proxyUrls...)
+	// p, err := proxy.NewRoundRobinBalancer(proxyUrls...)
+	p, err := proxy.NewConsistentHashBalancer(10, proxyUrls...)
 	if err != nil {
-		fmt.Printf("proxy.RoundRobinProxySwitcher*() error: %v\n", err)
+		fmt.Printf("proxy.NewRoundRobinBalancer() error: %v\n", err)
 		return
 	}
 	// var f collect.Fetcher = collect.BaseFetch{}
