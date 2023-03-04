@@ -15,12 +15,13 @@ import (
 )
 
 type Fetcher interface {
-	Get(url string) ([]byte, error)
+	Get(r *Request) ([]byte, error)
 }
 
 type BaseFetch struct {
 }
 
+// func (BaseFetch) Get(r *Request) ([]byte, error) {
 func (BaseFetch) Get(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -47,7 +48,8 @@ type BrowerFetch struct {
 	Proxy   proxy.ProxyFunc
 }
 
-func (b BrowerFetch) Get(url string) ([]byte, error) {
+// func (b BrowerFetch) Get(url string) ([]byte, error) {
+func (b BrowerFetch) Get(r *Request) ([]byte, error) {
 	client := http.Client{
 		Timeout: b.Timeout,
 	}
@@ -56,13 +58,18 @@ func (b BrowerFetch) Get(url string) ([]byte, error) {
 		transport.Proxy = b.Proxy
 		client.Transport = transport // 配置client对象的transport为自定义
 	}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", r.Url, nil)
 	if err != nil {
 		// fmt.Printf("http.NewRequest() error: %v\n", err)
-		return nil, fmt.Errorf("http.NewRequest(): %v\n", err)
+		return nil, fmt.Errorf("http.NewRequest(): %v", err)
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+	// 设置HTTP请求头部字段
+	// req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36 Edg/110.0.1587.57")
+	if len(r.Cookie) > 0 {
+		req.Header.Set("Cookie", r.Cookie)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
