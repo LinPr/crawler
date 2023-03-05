@@ -8,8 +8,9 @@ import (
 	"github.com/LinPr/crawler/collect"
 	"github.com/LinPr/crawler/log"
 	"github.com/LinPr/crawler/parse/doubangroup"
+	"github.com/LinPr/crawler/pipeline"
 	"github.com/LinPr/crawler/proxy"
-	"go.uber.org/zap"
+	// "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -54,34 +55,48 @@ func main() {
 	var f collect.Fetcher = collect.BrowerFetch{
 		Timeout: time.Second * 10,
 		Proxy:   p,
+		Logger:  logger,
 	}
 
-	seen := make(map[*collect.Request]bool) //防止遍历节点存在环
-	// 用一个for循环解决层序遍历，每循环一轮，遍历个页面
-	for len(crawlReqQueue) > 0 {
-		tmpCrawlReqQueue := crawlReqQueue
-		crawlReqQueue = nil
-		for _, req := range tmpCrawlReqQueue {
-			body, err := f.Get(req)
-			time.Sleep(time.Second * 1)
-			if err != nil {
-				logger.Error("f.Get(req) failed", zap.Error(err))
-				continue
-			}
+	pe := pipeline.PipelineEngine{
+		Seeds:       crawlReqQueue,
+		Fetcher:     f,
+		WorkerCount: 1,
+		Logger:      logger,
+		WaitTime:    time.Second * 1,
 
-			parsedReqBody := req.ParseFunc(body, req)
-			for _, content := range parsedReqBody.Contents {
-				logger.Info("parsedReqbody", zap.String("get url:", content.(string)))
-			}
-			if !seen[req] {
-				seen[req] = true
-				crawlReqQueue = append(crawlReqQueue, parsedReqBody.Requests...)
-			}
-
-		}
+		RequestC: make(chan *collect.Request),
+		WorkerC:  make(chan *collect.Request),
+		OutputC:  make(chan collect.ParsedRespBody),
 	}
+	pe.Run()
+	// —————————————这些不用，就注释掉了<2>—————————————————
+	// seen := make(map[*collect.Request]bool) //防止遍历节点存在环
+	// // 用一个for循环解决层序遍历，每循环一轮，遍历个页面
+	// for len(crawlReqQueue) > 0 {
+	// 	tmpCrawlReqQueue := crawlReqQueue
+	// 	crawlReqQueue = nil
+	// 	for _, req := range tmpCrawlReqQueue {
+	// 		body, err := f.Get(req)
+	// 		time.Sleep(time.Second * 1)
+	// 		if err != nil {
+	// 			logger.Error("f.Get(req) failed", zap.Error(err))
+	// 			continue
+	// 		}
 
-	// —————————————这些不用，就注释掉了—————————————————
+	// 		parsedRespBody := req.ParseFunc(body, req)
+	// 		for _, content := range parsedRespBody.Contents {
+	// 			logger.Info("parsedReqbody", zap.String("get url:", content.(string)))
+	// 		}
+	// 		if !seen[req] {
+	// 			seen[req] = true
+	// 			crawlReqQueue = append(crawlReqQueue, parsedRespBody.Requests...)
+	// 		}
+
+	// 	}
+	// }
+
+	// —————————————这些不用，就注释掉了<1>—————————————————
 	// body, err := f.Get(url)
 	// if err != nil {
 	// 	fmt.Printf("Fetch err: %v\n", err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/LinPr/crawler/proxy"
+	"go.uber.org/zap"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/unicode"
@@ -46,6 +47,7 @@ func (BaseFetch) Get(url string) ([]byte, error) {
 type BrowerFetch struct {
 	Timeout time.Duration
 	Proxy   proxy.ProxyFunc
+	Logger  *zap.Logger
 }
 
 // func (b BrowerFetch) Get(url string) ([]byte, error) {
@@ -73,6 +75,7 @@ func (b BrowerFetch) Get(r *Request) ([]byte, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		b.Logger.Error("client.Do(req)", zap.Error(err))
 		return nil, err
 	}
 

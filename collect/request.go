@@ -1,5 +1,7 @@
 package collect
 
+import "time"
+
 type ParsedRespBody struct {
 	Requests []*Request // 先解析出每个页面包含的的url
 
@@ -10,5 +12,6 @@ type ParsedRespBody struct {
 type Request struct {
 	Url       string
 	Cookie    string
+	WaitTime  time.Duration
 	ParseFunc func([]byte, *Request) ParsedRespBody
 }
